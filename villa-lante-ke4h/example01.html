@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Semantic Enrichment of Villa Lante</title>
+<link rel="stylesheet" href="css/style.css">
+
+
+<style>
+        body { font-family: Arial, sans-serif; margin: 30px; background-color: #f4f6f9; color: #333; }
+        h1 { color: #0056b3; }
+        button { padding: 10px 20px; font-size: 16px; background-color: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        button:hover { background-color: #218838; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; background: white; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        th, td { border: 1px solid #dee2e6; padding: 12px; text-align: left; }
+        th { background-color: #007bff; color: white; }
+        tr:nth-child(even) { background-color: #f8f9fa; }
+        #status { margin-top: 15px; font-weight: bold; color: #666; }
+</style>
+
+
+</head>
+
+<body>
+
+<center>
+<nav>
+    <a href="index.html">Home</a>
+    <a href="research.html">Research Question</a>
+    <a href="methodology.html">Methodology</a>
+    <a href="queries.html">SPARQL Queries</a>
+    <a href="prompts.html">Prompt Engineering</a>
+    <a href="enrichment.html">RDF Enrichment</a>
+    <a href="microdata.html">HTML Microdata</a>
+    <a href="results.html">Results</a>
+    <a href="challenges.html">Challenges</a>
+    <a href="evaluation.html">Evaluation</a>
+	  
+	<a href="example01.html">example 1 </a>
+	<a href="example02.html"> 2 </a>
+	<a href="example03.html"> 3 </a>
+</nav>
+</center>
+
+<div class="container">
+
+
+
+
+
+
+<section>
+
+    <h1>Interrogazione SPARQL ArCo: Villa Lante</h1>
+    <p>Questo script interroga l'endpoint Linked Open Data dei Beni Culturali Italiani (ArCo) cercando i record di catalogo che contengono "Villa Lante" nella descrizione o nel titolo.</p>
+    
+    <button id="btnQuery">Cerca su ArCo</button>
+    <div id="status"></div>
+
+    <table id="resultsTable" style="display:none;">
+        <thead>
+            <tr>
+                <th>Titolo / Descrizione del Bene</th>
+                <th>Tipo di Bene</th>
+                <th>URI Risorsa ArCo</th>
+            </tr>
+        </thead>
+        <tbody id="resultsBody"></tbody>
+    </table>
+
+    <script>
+        document.getElementById('btnQuery').addEventListener('click', eseguiSparqlArCo);
+
+        async function eseguiSparqlArCo() {
+            const statusDiv = document.getElementById('status');
+            const table = document.getElementById('resultsTable');
+            const tbody = document.getElementById('resultsBody');
+            
+            statusDiv.style.color = '#666';
+            statusDiv.innerText = 'Interrogazione del grafo dei Beni Culturali in corso (puo\' richiedere qualche secondo)...';
+            tbody.innerHTML = '';
+            table.style.display = 'none';
+
+            // Endpoint ufficiale del Ministero della Cultura gestito da ArCo
+            const endpointUrl = 'https://dati.beniculturali.it/sparql';
+            
+            // Query SPARQL ottimizzata per ArCo.
+            // Filtra le etichette rdfs:label che contengono "Villa Lante" (case-insensitive "i")
+            const sparqlQuery = `
+                PREFIX arco: <https://w3id.org/arco/ontology/arco/>
+                PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+                PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+
+                SELECT DISTINCT ?culturalProperty ?label ?type WHERE {
+                  ?culturalProperty rdfs:label ?label .
+                  ?culturalProperty rdf:type ?type .
+                  
+                  # Filtro per cercare l'entità specifica
+                  FILTER (regex(str(?label), "Villa Lante", "i"))
+                } 
+                LIMIT 50
+            `;
+
+            // Costruiamo la URL per la richiesta GET richiedendo il formato JSON
+            const fullUrl = endpointUrl + '?query=' + encodeURIComponent(sparqlQuery) + '&format=json';
+
+            try {
+                const response = await fetch(fullUrl);
+
+                if (!response.ok) {
+                    throw new Error(`Errore ArCo: ${response.status} ${response.statusText}`);
+                }
+
+                const data = await response.json();
+                const bindings = data.results.bindings;
+
+                if (!bindings || bindings.length === 0) {
+                    statusDiv.style.color = 'orange';
+                    statusDiv.innerText = "Nessun dato trovato per 'Villa Lante' nell'endpoint attuale.";
+                    return;
+                }
+
+                // Generazione delle righe nella tabella
+                bindings.forEach(row => {
+                    const tr = document.createElement('tr');
+                    
+                    // 1. Colonna Etichetta/Titolo
+                    const tdLabel = document.createElement('td');
+                    tdLabel.innerText = row.label.value;
+                    tr.appendChild(tdLabel);
+                    
+                    // 2. Colonna Tipo di Bene (estrae solo la parte finale dell'URI del tipo)
+                    const tdType = document.createElement('td');
+                    const typeUri = row.type.value;
+                    const typeCleaned = typeUri.substring(typeUri.lastIndexOf('/') + 1).replace('#', '');
+                    tdType.innerText = typeCleaned;
+                    tr.appendChild(tdType);
+
+                    // 3. Colonna URI dell'oggetto originale
+                    const tdUri = document.createElement('td');
+                    const link = document.createElement('a');
+                    link.href = row.culturalProperty.value;
+                    link.target = '_blank';
+                    link.className = 'uri-link';
+                    link.innerText = row.culturalProperty.value;
+                    tdUri.appendChild(link);
+                    tr.appendChild(tdUri);
+                    
+                    tbody.appendChild(tr);
+                });
+
+                statusDiv.style.color = 'green';
+                statusDiv.innerText = `Trovati ${bindings.length} elementi associati a Villa Lante!`;
+                table.style.display = 'table';
+
+            } catch (error) {
+                console.error(error);
+                statusDiv.style.color = 'red';
+                statusDiv.innerText = "Errore durante il recupero dei dati da ArCo: " + error.message;
+            }
+        }
+
+   </script>
+
+    <h2>Villa Lante di Bagnaia – Conservation Intervention Enrichment</h2>
+
+    <h3>Background</h3>
+
+    <p>
+        Conservation interventions are essential for documenting the life cycle of
+        cultural heritage assets. Recording restoration activities improves the
+        historical documentation of a monument, supports conservation management,
+        and provides information about preservation strategies and funding
+        programmes. Within Cultural Heritage Knowledge Graphs, these interventions
+        represent valuable contextual information that complements traditional
+        cataloguing metadata.
+    </p>
+
+    <h3>Task</h3>
+
+    <p>
+        Create a SPARQL <strong>CONSTRUCT</strong> query that generates proposed RDF triples
+        for enriching ArCo with information about a recent conservation intervention
+        involving Villa Lante di Bagnaia.
+    </p>
+
+    <h3>Important Context</h3>
+
+    <ul>
+        <li>We are not directly modifying the public ArCo endpoint.</li>
+        <li>The endpoint is used exclusively to verify the identified knowledge gap and generate proposed enrichment triples.</li>
+        <li>Do not use <code>INSERT DATA</code>.</li>
+        <li>Use <code>SPARQL CONSTRUCT</code> because it returns RDF triples representing the proposed enrichment.</li>
+        <li>The query must generate only enrichment triples and must not modify the existing ArCo resource.</li>
+    </ul>
+
+    <h3>Identified Gap</h3>
+
+    <p>
+        The ArCo record provides historical and descriptive information about Villa
+        Lante but does not include the most recent conservation intervention funded
+        by the Italian National Recovery and Resilience Plan (PNRR). This project,
+        launched in 2024, represents one of the most significant restoration
+        campaigns carried out on the monument in recent years.
+    </p>
+
+    <p><strong>Missing information:</strong></p>
+
+    <ul>
+        <li>Current conservation intervention (2024–2026).</li>
+        <li>Funding programme (Italian National Recovery and Resilience Plan – PNRR).</li>
+        <li>Restoration of the historical fountains and formal gardens.</li>
+        <li>Reconstruction of the hydraulic network.</li>
+        <li>Reactivation of the historical water features.</li>
+        <li>Flora and fauna survey of the park.</li>
+        <li>Census of approximately 600 trees.</li>
+    </ul>
+
+    <h3>Target Resource</h3>
+
+    <p><strong>Subject IRI</strong></p>
+
+    <p>
+        <a href="https://w3id.org/arco/resource/CulturalPropertyPart/1200088359-part-villa-lante-a-bagnaia-monumento-nazionale-v-an" target="_blank">
+            https://w3id.org/arco/resource/CulturalPropertyPart/1200088359-part-villa-lante-a-bagnaia-monumento-nazionale-v-an
+        </a>
+    </p>
+
+    <h3>External Sources</h3>
+
+    <ul>
+        <li>Official website of Villa Lante di Bagnaia.</li>
+        <li>Italian Ministry of Culture.</li>
+        <li>Official PNRR documentation concerning the restoration project.</li>
+    </ul>
+
+    <h3>Requirements</h3>
+
+    <ul>
+        <li>Use SPARQL CONSTRUCT, not INSERT DATA.</li>
+        <li>Verify that the target resource exists by checking its <code>rdfs:label</code>.</li>
+        <li>Generate RDF triples only for the existing ArCo cultural property.</li>
+        <li>Do not create a new cultural property resource.</li>
+        <li>Represent the intervention as a <code>ConservationIntervention</code>.</li>
+        <li>Associate the intervention with Villa Lante using the appropriate ArCo properties.</li>
+        <li>Represent PNRR as the activity sponsor.</li>
+        <li>Include both <code>rdfs:label</code> and <code>rdfs:comment</code> describing the intervention.</li>
+        <li>Follow Linked Open Data and Cultural Heritage best practices.</li>
+    </ul>
+
+    <h3>Expected Enrichment</h3>
+
+    <ol>
+        <li>Preserve the existing ArCo resource representing Villa Lante.</li>
+        <li>Create a new resource describing the conservation intervention.</li>
+        <li>Link the intervention to the cultural property.</li>
+        <li>Associate the intervention with its funding programme (PNRR).</li>
+        <li>Provide a semantic description of the restoration activities.</li>
+        <li>Improve the documentation of Villa Lante's recent conservation history.</li>
+    </ol>
+
+
+</section>
+
+
+
+
+
+
+
+</div>
+
+</body>
+</html>
