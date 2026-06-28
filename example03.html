@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Semantic Enrichment of Villa Lante esempio 02</title>
+<link rel="stylesheet" href="css/style.css">
+
+
+<style>
+        body { font-family: Arial, sans-serif; margin: 30px; background-color: #f4f6f9; color: #333; }
+        h1 { color: #8b0000; }
+        p { color: #555; }
+        button { padding: 10px 20px; font-size: 16px; background-color: #8b0000; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        button:hover { background-color: #a30000; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; background: white; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        th, td { border: 1px solid #dee2e6; padding: 12px; text-align: left; }
+        th { background-color: #8b0000; color: white; }
+        tr:nth-child(even) { background-color: #f8f9fa; }
+        #status { margin-top: 15px; font-weight: bold; color: #666; }
+        a { color: #0056b3; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+    </style>
+
+
+
+</head>
+
+<body>
+
+<center>
+<nav>
+    <a href="index.html">Home</a>
+    <a href="research.html">Research Question</a>
+    <a href="methodology.html">Methodology</a>
+    <a href="queries.html">SPARQL Queries</a>
+    <a href="prompts.html">Prompt Engineering</a>
+    <a href="enrichment.html">RDF Enrichment</a>
+    <a href="microdata.html">HTML Microdata</a>
+    <a href="results.html">Results</a>
+    <a href="challenges.html">Challenges</a>
+    <a href="evaluation.html">Evaluation</a>
+	  
+	<a href="example01.html">example 1 </a>
+	<a href="example02.html"> 2 </a>
+	<a href="example03.html"> 3 </a>
+</nav>
+</center>
+
+<div class="container">
+
+
+
+
+
+
+<section>
+
+    <h1>Interrogazione SPARQL su ArCo (Beni Culturali)</h1>
+    <p>Questo script interroga l'endpoint ufficiale di <strong>ArCo</strong> per estrarre i beni culturali associati a <em>"Villa Lante"</em> (strutture, elementi di d'insieme, affreschi o componenti del complesso).</p>
+    
+    <button id="btnQuery">Cerca in ArCo</button>
+    <div id="status"></div>
+
+    <table id="resultsTable" style="display:none;">
+        <thead>
+            <tr>
+                <th>Titolo / Descrizione del Bene</th>
+                <th>Tipologia</th>
+                <th>URI (Scheda Linked Data)</th>
+            </tr>
+        </thead>
+        <tbody id="resultsBody"></tbody>
+    </table>
+
+    <script>
+        document.getElementById('btnQuery').addEventListener('click', eseguiSparqlArco);
+
+async function eseguiSparqlArco() {
+    const statusDiv = document.getElementById('status');
+    const table = document.getElementById('resultsTable');
+    const tbody = document.getElementById('resultsBody');
+    
+    statusDiv.style.color = '#666';
+    statusDiv.innerText = 'Interrogazione in corso su DBpedia Mirror...';
+    tbody.innerHTML = '';
+    table.style.display = 'none';
+
+    // Usiamo DBpedia che è robusto e accessibile da qualsiasi browser
+    // const endpointUrl = 'https://dbpedia.org/sparql';
+	// Aggiungiamo un proxy pubblico per aggirare i blocchi di sicurezza CORS di ArCo
+	const endpointUrl = 'https://w3id.org/arco/sparql';
+    
+    // Cerchiamo le entità correlate a "Villa Lante" e la loro descrizione/tipologia
+    const sparqlQuery = `
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+        PREFIX dbo: <http://dbpedia.org/ontology/>
+
+        SELECT DISTINCT ?culturalProperty ?label ?typeLabel WHERE {
+          ?culturalProperty rdfs:label ?label .
+          ?culturalProperty a ?type .
+          ?type rdfs:label ?typeLabel .
+          
+          FILTER (CONTAINS(LCASE(?label), "villa lante"))
+          FILTER (lang(?label) = "it" && lang(?typeLabel) = "it")
+        } 
+        LIMIT 10
+    `;
+
+    const fullUrl = endpointUrl + '?query=' + encodeURIComponent(sparqlQuery) + '&format=json';
+
+    try {
+        const response = await fetch(fullUrl);
+        if (!response.ok) throw new Error(`Errore Server: ${response.status}`);
+
+        const data = await response.json();
+        const bindings = data.results.bindings;
+
+        if (!bindings || bindings.length === 0) {
+            statusDiv.style.color = 'orange';
+            statusDiv.innerText = "Nessun dato trovato.";
+            return;
+        }
+
+        bindings.forEach(row => {
+            const tr = document.createElement('tr');
+            const tdLabel = document.createElement('td');
+            tdLabel.innerText = row.label.value;
+            
+            const tdType = document.createElement('td');
+            tdType.innerText = row.typeLabel.value;
+            
+            const tdUri = document.createElement('td');
+            const link = document.createElement('a');
+            link.href = row.culturalProperty.value;
+            link.target = '_blank';
+            link.innerText = 'Apri Risorsa';
+            tdUri.appendChild(link);
+            
+            tr.appendChild(tdLabel);
+            tr.appendChild(tdType);
+            tr.appendChild(tdUri);
+            tbody.appendChild(tr);
+        });
+
+        statusDiv.style.color = 'green';
+        statusDiv.innerText = `Successo! Trovati ${bindings.length} elementi.`;
+        table.style.display = 'table';
+
+    } catch (error) {
+        statusDiv.style.color = 'red';
+        statusDiv.innerText = "Errore di connessione: " + error.message;
+    }
+} 
+    </script>
+	
+</section>
+
+
+
+
+
+
+
+</div>
+
+</body>
+</html>
